@@ -5,17 +5,20 @@
   <title>Cubie Charge</title>
   <style>
     body { margin: 0; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
-    canvas { background: #0e0e0e; image-rendering: pixelated; display: block; }
+    /* tabindex="0" needs outline:none to hide the focus border */
+    canvas { background: #0e0e0e; image-rendering: pixelated; display: block; outline: none; }
     @font-face { font-family: 'pixel-font'; src: url('fonts/super.ttf') format('truetype'); }
   </style>
 </head>
 <body>
-  <canvas id="game" width="400" height="300"></canvas>
+  <canvas id="game" width="400" height="300" tabindex="0"></canvas>
+
   <script>
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
     ctx.imageSmoothingEnabled = false;
 
+    // --- Asset Helpers ---
     function createImg(path) {
       const img = new Image();
       img.src = path;
@@ -50,15 +53,18 @@
     let cubie, energy, junks = [], lastTime = performance.now();
 
     const keys = { ArrowUp: false, ArrowDown: false };
-    
-    // Updated listener to prevent scrolling
-    document.addEventListener("keydown", e => { 
-      if (keys.hasOwnProperty(e.key)) {
-        e.preventDefault(); 
-        keys[e.key] = true; 
+
+    // --- EMBED SCROLL FIX ---
+    window.addEventListener("keydown", function(e) {
+      if(["Space","ArrowUp","ArrowDown"].indexOf(e.code) > -1) {
+        e.preventDefault(); // Kill scroll globally in the frame
       }
+      if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
+    }, false);
+
+    window.addEventListener("keyup", e => { 
+      if (keys.hasOwnProperty(e.key)) keys[e.key] = false; 
     });
-    document.addEventListener("keyup", e => { if (keys.hasOwnProperty(e.key)) keys[e.key] = false; });
 
     function getLevelName(score) {
       for (const level of levels) { if (score >= level.score) return level.name; }
@@ -186,9 +192,11 @@
     }
 
     canvas.addEventListener("click", () => {
+      canvas.focus(); // Force focus so keys work in Framer
       if (gameState === "start" || gameState === "gameover") initGame();
       else if (gameState === "controls") { hasShownControls = true; gameState = "playing"; }
     });
+
     requestAnimationFrame(update);
   </script>
 </body>
