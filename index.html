@@ -32,6 +32,7 @@
     const ctx = canvas.getContext("2d");
     ctx.imageSmoothingEnabled = false;
 
+    // --- Assets ---
     const cubieSprites = [0, 1].map(i => {
       const img = new Image();
       img.src = `sprites/cubie/cubie_${i}.png`;
@@ -46,6 +47,10 @@
       return img;
     });
 
+    // SPACE JUNK: Replace these with your junk sprites later
+    const junkImg = new Image();
+    junkImg.src = "sprites/junk/junk.png"; 
+
     const energyBarSprites = Array.from({ length: 11 }, (_, i) => {
       const img = new Image();
       img.src = `sprites/energy_bar/energy_bar_${i}.png`;
@@ -54,10 +59,13 @@
 
     const backgroundStart = new Image();
     backgroundStart.src = "sprites/backgrounds/start.png";
-    const backgroundPlaying = new Image();
-    backgroundPlaying.src = "sprites/backgrounds/playing.png";
     const backgroundGameOver = new Image();
     backgroundGameOver.src = "sprites/backgrounds/gameover.png";
+
+    // Planetary Backgrounds
+    const bgEarth = new Image(); bgEarth.src = "sprites/backgrounds/playing.png";
+    const bgMars = new Image(); bgMars.src = "sprites/backgrounds/mars.png";
+    const bgJupiter = new Image(); bgJupiter.src = "sprites/backgrounds/jupiter.png";
 
     const levels = [
       { score: 30000, name: "PAST" },
@@ -73,7 +81,7 @@
 
     const ENERGY_BAR_HEIGHT = 40;
 
-    // Declare variables properly
+    // --- State Variables ---
     let gameState = "start";
     let score = 0;
     let energyLevel = 110;
@@ -88,33 +96,26 @@
     let energyFrameCounter = 0;
     let frozenFrame = null;
     let hasShownControls = false;
-    let cubie;
-    let energy;
+    let cubie, energy, junk;
     let lastTime = performance.now();
+    let difficultyTimer = 0;
+    const difficultyInterval = 0.5;
 
     const keys = { ArrowUp: false, ArrowDown: false };
-    document.addEventListener("keydown", e => {
-      if (e.key === "ArrowUp" || e.key === "ArrowDown") keys[e.key] = true;
-    });
-    document.addEventListener("keyup", e => {
-      if (e.key === "ArrowUp" || e.key === "ArrowDown") keys[e.key] = false;
-    });
-    window.addEventListener("keydown", e => {
-      if (["ArrowUp", "ArrowDown"].includes(e.key)) e.preventDefault();
-    }, { passive: false });
+    document.addEventListener("keydown", e => { if (keys.hasOwnProperty(e.key)) keys[e.key] = true; });
+    document.addEventListener("keyup", e => { if (keys.hasOwnProperty(e.key)) keys[e.key] = false; });
+    window.addEventListener("keydown", e => { if (["ArrowUp", "ArrowDown"].includes(e.key)) e.preventDefault(); }, { passive: false });
 
     function getLevelName(score) {
-      for (const level of levels) {
-        if (score >= level.score) return level.name;
-      }
+      for (const level of levels) { if (score >= level.score) return level.name; }
       return "Unknown";
     }
 
     function initGame() {
       cubie = { x: 20, y: ENERGY_BAR_HEIGHT + 100, w: 74, h: 50 };
-      energy = { x: 400, y: ENERGY_BAR_HEIGHT + Math.random() * (300 - ENERGY_BAR_HEIGHT - 20), r: 15 };
+      energy = { x: 400, y: ENERGY_BAR_HEIGHT + Math.random() * (200), r: 15 };
+      junk = { x: 600, y: 0, w: 30, h: 30, active: false };
 
-      // Reset gameplay variables on new game start:
       score = 0;
       energyLevel = 110;
       speed = 200;
@@ -137,178 +138,136 @@
 
     function drawCubie() {
       const img = cubieChargeTimer > 0 ? cubieChargeImg : cubieSprites[cubieFrame];
-      if (img && img.complete) {
-        ctx.drawImage(img, cubie.x, cubie.y, cubie.w, cubie.h);
-      }
+      if (img && img.complete) ctx.drawImage(img, cubie.x, cubie.y, cubie.w, cubie.h);
     }
 
     function drawEnergy() {
       const img = energyImgs[energyFrame];
-      ctx.save();
-      ctx.shadowColor = "rgba(255,255,0,0.5)";
-      ctx.shadowBlur = 10;
       if (img && img.complete) {
+        ctx.save();
+        ctx.shadowColor = "rgba(255,255,0,0.5)";
+        ctx.shadowBlur = 10;
         ctx.drawImage(img, energy.x, energy.y, 44, 27);
+        ctx.restore();
       }
-      ctx.restore();
+    }
+
+    function drawJunk() {
+      if (junk.active && junkImg.complete) {
+        ctx.drawImage(junkImg, junk.x, junk.y, junk.w, junk.h);
+      }
     }
 
     function drawEnergyBar() {
       const index = Math.max(0, Math.min(10, Math.floor(energyLevel / 10)));
       const img = energyBarSprites[index];
-      if (img && img.complete) {
-        ctx.drawImage(img, 20, 8, 240, 24);
-      }
+      if (img && img.complete) ctx.drawImage(img, 20, 8, 240, 24);
       ctx.fillStyle = "white";
       ctx.font = "16px pixel-font";
       ctx.fillText("Score: " + score, 280, 26);
     }
 
-    function drawStartScreen() {
-      ctx.fillStyle = "white";
-      ctx.font = "36px pixel-font";
-      ctx.fillText("Cubie Charge", 100, 150);
-      ctx.fillStyle = "#ffc413";
-      ctx.font = "24px pixel-font";
-      ctx.fillText("Click to Start", 126, 180);
-    }
-
-    function drawGameOver() {
-      ctx.fillStyle = "#ff1e1e";
-      ctx.font = "30px pixel-font";
-      ctx.fillText("Power Depleted", 110, 130);
-      ctx.fillStyle = "white";
-      ctx.font = "24px pixel-font";
-      ctx.fillText("Score: " + score, 150, 165);
-      ctx.fillStyle = "#ffc413";
-      ctx.fillText("Rank: " + getLevelName(score), 150, 195);
-      ctx.fillStyle = "white";
-      ctx.fillText("Click to Play Again", 110, 230);
-    }
-
-    function drawControlsScreen() {
-      if (frozenFrame) ctx.putImageData(frozenFrame, 0, 0);
-      else {
-        ctx.fillStyle = "#000";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-      }
-
-      ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      ctx.fillStyle = "white";
-      ctx.font = "20px pixel-font";
-      ctx.fillText("Controls: Use ↑ and ↓ to move", 60, 160);
-
-      ctx.fillStyle = "#ffc413";
-      ctx.font = "18px pixel-font";
-      ctx.fillText("Click to Play", 140, 260);
-    }
-    
-    let difficultyTimer = 0;
-    const difficultyInterval = 0.5; // ~50 frames at 60fps = 0.83s
-
     function update(currentTime) {
       const deltaTime = (currentTime - lastTime) / 1000;
       lastTime = currentTime;
-
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      let bg = backgroundPlaying;
-      if (gameState === "start") bg = backgroundStart;
-      if (gameState === "gameover") bg = backgroundGameOver;
-      if (bg && bg.complete) ctx.drawImage(bg, 0, 0, canvas.width, canvas.height);
+      // Background Switching Logic
+      let currentBG = bgEarth;
+      if (gameState === "start") currentBG = backgroundStart;
+      else if (gameState === "gameover") currentBG = backgroundGameOver;
+      else {
+        if (score >= 15000) currentBG = bgJupiter;
+        else if (score >= 7500) currentBG = bgMars;
+      }
+      if (currentBG.complete) ctx.drawImage(currentBG, 0, 0, canvas.width, canvas.height);
 
       if (gameState === "start") {
-        drawStartScreen();
-      } else if (gameState === "controls") {
-        drawControlsScreen();
-      } else if (gameState === "playing") {
+        ctx.fillStyle = "white"; ctx.font = "36px pixel-font"; ctx.fillText("Cubie Charge", 100, 150);
+        ctx.fillStyle = "#ffc413"; ctx.font = "24px pixel-font"; ctx.fillText("Click to Start", 126, 180);
+      } 
+      else if (gameState === "controls") {
+        if (frozenFrame) ctx.putImageData(frozenFrame, 0, 0);
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "white"; ctx.font = "18px pixel-font";
+        ctx.fillText("Controls: Use ↑ and ↓ to move", 60, 140);
+        ctx.fillStyle = "#00ff00";
+        ctx.fillText("TIP: COLLECT rays for power!", 60, 170);
+        ctx.fillStyle = "#ff0000";
+        ctx.fillText("AVOID space junk!", 60, 200);
+        ctx.fillStyle = "#ffc413"; ctx.fillText("Click to Play", 140, 260);
+      } 
+      else if (gameState === "playing") {
         // Movement
-        const moveSpeed = 200;
-        if (keys.ArrowUp) cubie.y -= moveSpeed * deltaTime;
-        if (keys.ArrowDown) cubie.y += moveSpeed * deltaTime;
+        if (keys.ArrowUp) cubie.y -= 200 * deltaTime;
+        if (keys.ArrowDown) cubie.y += 200 * deltaTime;
         cubie.y = Math.max(ENERGY_BAR_HEIGHT, Math.min(canvas.height - cubie.h, cubie.y));
 
-        // Animation frame counters
+        // Animation
         cubieFrameCounter += deltaTime;
-        if (cubieFrameCounter >= 0.5) {
-          cubieFrame = (cubieFrame + 1) % cubieSprites.length;
-          cubieFrameCounter = 0;
-        }
-
+        if (cubieFrameCounter >= 0.5) { cubieFrame = (cubieFrame + 1) % 2; cubieFrameCounter = 0; }
         if (cubieChargeTimer > 0) cubieChargeTimer--;
-
         energyFrameCounter += deltaTime;
-        if (energyFrameCounter >= 1 / 3) {
-          energyFrame = (energyFrame + 1) % energyImgs.length;
-          energyFrameCounter = 0;
+        if (energyFrameCounter >= 0.3) { energyFrame = (energyFrame + 1) % 3; energyFrameCounter = 0; }
+
+        // Junk Spawning (Uncommon)
+        if (!junk.active && Math.random() < 0.005) {
+          junk.active = true;
+          junk.x = canvas.width;
+          junk.y = ENERGY_BAR_HEIGHT + Math.random() * (canvas.height - ENERGY_BAR_HEIGHT - 30);
         }
 
-        drawCubie();
-        drawEnergy();
-        drawEnergyBar();
-
+        // Difficulty & Energy
         gameTimer += deltaTime;
         difficultyTimer += deltaTime;
-
-        // Increase difficulty every 0.83s
         if (difficultyTimer >= difficultyInterval) {
           speed += 5.5;
           drainRate = (10 * speed) / 380;
           difficultyTimer -= difficultyInterval;
         }
 
-        // Energy logic
-        if (rechargeBuffer > 0) {
-          rechargeBuffer--;
-        } else {
-          energyLevel -= drainRate * deltaTime;
-        }
-
+        if (rechargeBuffer > 0) rechargeBuffer--;
+        else energyLevel -= drainRate * deltaTime;
         if (energyLevel <= 0) gameState = "gameover";
 
+        // Object Movement
         energy.x -= speed * deltaTime;
+        if (junk.active) junk.x -= (speed * 0.5) * deltaTime;
 
-        // Score increase logic
-        const basePoints = 50;
-        const scalar = 5;
-        const secondsElapsed = gameTimer;
-        let points = Math.floor(basePoints + scalar * secondsElapsed);
-        if (energyLevel >= 100) points = Math.floor(points * 1.5);
-
-        const hit = (
-          energy.x < cubie.x + cubie.w &&
-          energy.y + 20 > cubie.y &&
-          energy.y < cubie.y + cubie.h
-        );
-
-        if (hit) {
+        // Collision: Energy
+        if (energy.x < cubie.x + cubie.w && energy.x + 40 > cubie.x && energy.y + 20 > cubie.y && energy.y < cubie.y + cubie.h) {
+          let points = Math.floor(50 + 5 * gameTimer);
+          if (energyLevel >= 100) points = Math.floor(points * 1.5);
           score += points;
           energyLevel = Math.min(110, energyLevel + 10);
-          rechargeBuffer = 20;
-          cubieChargeTimer = 35;
-          energy.x = canvas.width;
-          energy.y = ENERGY_BAR_HEIGHT + Math.random() * (canvas.height - ENERGY_BAR_HEIGHT - 20);
+          rechargeBuffer = 20; cubieChargeTimer = 35;
+          energy.x = canvas.width; energy.y = ENERGY_BAR_HEIGHT + Math.random() * (240);
         }
 
-        if (energy.x < -20) {
-          energy.x = canvas.width;
-          energy.y = ENERGY_BAR_HEIGHT + Math.random() * (canvas.height - ENERGY_BAR_HEIGHT - 20);
+        // Collision: Junk
+        if (junk.active && junk.x < cubie.x + cubie.w && junk.x + junk.w > cubie.x && junk.y < cubie.y + cubie.h && junk.y + junk.h > cubie.y) {
+          energyLevel -= 15;
+          junk.active = false;
         }
-      } else if (gameState === "gameover") {
-        drawGameOver();
+
+        if (energy.x < -40) { energy.x = canvas.width; energy.y = ENERGY_BAR_HEIGHT + Math.random() * (240); }
+        if (junk.x < -40) junk.active = false;
+
+        drawCubie(); drawEnergy(); drawJunk(); drawEnergyBar();
+      } 
+      else if (gameState === "gameover") {
+        ctx.fillStyle = "#ff1e1e"; ctx.font = "30px pixel-font"; ctx.fillText("Power Depleted", 110, 130);
+        ctx.fillStyle = "white"; ctx.font = "24px pixel-font"; ctx.fillText("Score: " + score, 150, 165);
+        ctx.fillStyle = "#ffc413"; ctx.fillText("Rank: " + getLevelName(score), 150, 195);
+        ctx.fillStyle = "white"; ctx.fillText("Click to Play Again", 110, 230);
       }
-
       requestAnimationFrame(update);
     }
 
     canvas.addEventListener("click", () => {
       if (gameState === "start") initGame();
-      else if (gameState === "controls") {
-        hasShownControls = true;
-        gameState = "playing";
-      } else if (gameState === "gameover") initGame();
+      else if (gameState === "controls") { hasShownControls = true; gameState = "playing"; }
+      else if (gameState === "gameover") initGame();
     });
 
     requestAnimationFrame(update);
