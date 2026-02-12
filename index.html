@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <title>Cubie Charge</title>
   <style>
-    body { margin: 0; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; }
+    body { margin: 0; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
     canvas { background: #0e0e0e; image-rendering: pixelated; display: block; }
     @font-face { font-family: 'pixel-font'; src: url('fonts/super.ttf') format('truetype'); }
   </style>
@@ -50,7 +50,14 @@
     let cubie, energy, junks = [], lastTime = performance.now();
 
     const keys = { ArrowUp: false, ArrowDown: false };
-    document.addEventListener("keydown", e => { if (keys.hasOwnProperty(e.key)) keys[e.key] = true; });
+    
+    // Updated listener to prevent scrolling
+    document.addEventListener("keydown", e => { 
+      if (keys.hasOwnProperty(e.key)) {
+        e.preventDefault(); 
+        keys[e.key] = true; 
+      }
+    });
     document.addEventListener("keyup", e => { if (keys.hasOwnProperty(e.key)) keys[e.key] = false; });
 
     function getLevelName(score) {
@@ -108,7 +115,6 @@
         if (cubieHitTimer > 0) cubieHitTimer -= deltaTime;
         if (notificationTimer > 0) notificationTimer -= deltaTime;
 
-        // Controlled Junk Spawning
         junkSpawnTimer += deltaTime;
         if (junkSpawnTimer >= spawnInterval) {
           junks.push({ 
